@@ -40,6 +40,8 @@ import { OtelIngestionQueue } from "../redis/otelIngestionQueue";
 import { isValidDateString, flattenJsonToPathArrays } from "./utils";
 import { convertDateToClickhouseDateTime } from "../clickhouse/client";
 
+export const AI_GATEWAY_INSTRUMENTATION_SCOPE_NAME = "langfuse-ai-gateway";
+
 // Foreign level vocabularies observed from OTel senders (OTel severity
 // names, python logging, loguru, console) mapped onto the Langfuse enum.
 //  The classic ingestion API keeps its strict enum; only the
@@ -1893,11 +1895,9 @@ export class OtelIngestionProcessor {
 
     // Gateway observation attributes are represented by canonical fields.
     // Keep unknown attributes available for diagnostics.
-    if (instrumentationScopeName === "langfuse-ai-gateway") {
+    if (instrumentationScopeName === AI_GATEWAY_INSTRUMENTATION_SCOPE_NAME) {
       for (const key of Object.values(LangfuseOtelSpanAttributes)) {
-        if (key.startsWith("langfuse.observation.")) {
-          delete rawFilteredAttributes[key];
-        }
+        delete rawFilteredAttributes[key];
       }
     }
 
@@ -3008,21 +3008,25 @@ export class OtelIngestionProcessor {
         }
 
         // Subtract cached token count from total input and output
-        usageDetails["input"] = Math.max(
-          (usageDetails["input"] ?? 0) -
-            (usageDetails["input_cached_tokens"] ?? 0) -
-            (usageDetails["input_cache_creation"] ?? 0) -
-            (usageDetails["input_cache_creation_5m"] ?? 0) -
-            (usageDetails["input_cache_creation_1h"] ?? 0) -
-            (usageDetails["input_cache_read"] ?? 0),
-          0,
-        );
+        if (usageDetails["input"] !== undefined) {
+          usageDetails["input"] = Math.max(
+            usageDetails["input"] -
+              (usageDetails["input_cached_tokens"] ?? 0) -
+              (usageDetails["input_cache_creation"] ?? 0) -
+              (usageDetails["input_cache_creation_5m"] ?? 0) -
+              (usageDetails["input_cache_creation_1h"] ?? 0) -
+              (usageDetails["input_cache_read"] ?? 0),
+            0,
+          );
+        }
 
-        usageDetails["output"] = Math.max(
-          (usageDetails["output"] ?? 0) -
-            (usageDetails["output_reasoning_tokens"] ?? 0),
-          0,
-        );
+        if (usageDetails["output"] !== undefined) {
+          usageDetails["output"] = Math.max(
+            usageDetails["output"] -
+              (usageDetails["output_reasoning_tokens"] ?? 0),
+            0,
+          );
+        }
 
         return usageDetails;
       } catch {
